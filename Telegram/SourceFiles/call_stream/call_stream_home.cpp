@@ -355,7 +355,7 @@ void Home::wireVideoTracks() {
 				_feedTrackLifetimes[i] = rpl::lifetime();
 				_feedWired[i] = true;
 				track->renderNextFrame() | rpl::on_next([this, track, idx]() {
-					auto info = track->frameWithInfo(true);
+					auto info = track->frameWithInfo(false);
 					VideoFrameData frameData;
 					if (info.yuv420) {
 						frameData.hasYuv420 = true;
@@ -387,7 +387,7 @@ void Home::wireVideoTracks() {
 			else _feedWired[0] = true;
 			const int idx = 0;
 			track->renderNextFrame() | rpl::on_next([this, track, idx]() {
-				auto info = track->frameWithInfo(true);
+				auto info = track->frameWithInfo(false);
 				VideoFrameData frameData;
 				if (info.yuv420) {
 					frameData.hasYuv420 = true;
