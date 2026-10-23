@@ -45,8 +45,9 @@ QSize ClampedSize(QSize size) {
 
 } // namespace
 
-FeedEncoder::FeedEncoder(const QString &folder)
-: _folder(folder) {
+FeedEncoder::FeedEncoder(const QString &folder, Packager *packager)
+: _folder(folder)
+, _packager(packager) {
 	_thread = std::thread([this] { workerLoop(); });
 }
 
@@ -279,7 +280,7 @@ void FeedEncoder::encodeOne(const VideoFrameData &data) {
 	}
 	av_frame_free(&srcFrame);
 
-	frame->pts = 0; // TODO timestamp
+	frame->pts = _pts;
 
 	AVPacket *pkt = av_packet_alloc();
 	int ret = avcodec_send_frame(ctx, frame);
@@ -288,7 +289,12 @@ void FeedEncoder::encodeOne(const VideoFrameData &data) {
 			ret = avcodec_receive_packet(ctx, pkt);
 			if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) break;
 			if (ret < 0) break;
-			// discard packet
+			pkt->pts = _pts;
+			pkt->dts = _pts;
+			_pts++;
+			if (_packager) {
+				_packager->writeVideoPacket(QByteArray((const char*)pkt->data, pkt->size), pkt->pts, (pkt->flags & AV_PKT_FLAG_KEY) != 0);
+			}
 			av_packet_unref(pkt);
 		}
 	}

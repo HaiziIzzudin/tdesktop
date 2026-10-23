@@ -6,6 +6,7 @@ the official desktop application for the Telegram messaging service.
 #pragma once
 
 #include "call_stream/call_stream_types.h"
+#include "call_stream/call_stream_packager.h"
 
 #include <QImage>
 #include <QSize>
@@ -23,7 +24,7 @@ namespace CallStream {
 
 class FeedEncoder {
 public:
-	explicit FeedEncoder(const QString &folder);
+	explicit FeedEncoder(const QString &folder, Packager *packager = nullptr);
 	~FeedEncoder();
 
 	void submitFrame(const QImage &frame);
@@ -49,6 +50,8 @@ private:
 	void closeEncoder();
 
 	QString _folder;
+	Packager *_packager = nullptr;
+	qint64 _pts = 0;
 	std::thread _thread;
 	std::mutex _mutex;
 	std::condition_variable _cv;

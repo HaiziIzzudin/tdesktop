@@ -39,6 +39,7 @@ public:
 
 private:
 	int _index = 0;
+	Packager _packager;
 	FeedEncoder _encoder;
 	std::shared_ptr<AudioEncoder> _audio;
 };

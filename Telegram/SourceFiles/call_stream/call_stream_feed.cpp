@@ -9,7 +9,8 @@ namespace CallStream {
 
 StreamFeed::StreamFeed(int index, const QString &folder, const std::shared_ptr<AudioEncoder> &audio)
 : _index(index)
-, _encoder(folder)
+, _packager(folder)
+, _encoder(folder, &_packager)
 , _audio(audio) {
 }
 
@@ -36,6 +37,7 @@ void StreamFeed::submitAudioPiece(const AudioPiece &piece) {
 
 void StreamFeed::finish() {
 	_encoder.finish();
+	_packager.finish();
 }
 
 } // namespace CallStream
