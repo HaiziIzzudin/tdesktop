@@ -21,6 +21,7 @@ public:
 	~Packager();
 
 	void writeVideoPacket(const QByteArray &data, qint64 pts, bool keyFrame);
+	void writeAudioPacket(const QByteArray &data, qint64 ptsMs);
 	void finish();
 	[[nodiscard]] const QString &folder() const { return _folder; }
 
@@ -32,6 +33,7 @@ private:
 	QString _playlist;
 	AVFormatContext *_fmt = nullptr;
 	AVStream *_videoStream = nullptr;
+	AVStream *_audioStream = nullptr;
 	bool _headerWritten = false;
 	bool _ended = false;
 	std::mutex _mutex;

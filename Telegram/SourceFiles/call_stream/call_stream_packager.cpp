@@ -59,6 +59,15 @@ bool Packager::open() {
 	_videoStream->codecpar->height = 480;
 	_videoStream->time_base = AVRational{ 1, 30 };
 
+	_audioStream = avformat_new_stream(_fmt, nullptr);
+	if (_audioStream) {
+		_audioStream->codecpar->codec_type = AVMEDIA_TYPE_AUDIO;
+		_audioStream->codecpar->codec_id = AV_CODEC_ID_AAC;
+		_audioStream->codecpar->sample_rate = 48000;
+		av_channel_layout_default(&_audioStream->codecpar->ch_layout, 2);
+		_audioStream->time_base = AVRational{ 1, 48000 };
+	}
+
 	if (!(_fmt->oformat->flags & AVFMT_NOFILE)) {
 		if (avio_open(&_fmt->pb, outPath.c_str(), AVIO_FLAG_WRITE) < 0) {
 			return false;
@@ -94,6 +103,21 @@ void Packager::writeVideoPacket(const QByteArray &data, qint64 pts, bool keyFram
 	pkt->flags = keyFrame ? AV_PKT_FLAG_KEY : 0;
 	// rescale pts from 1/30 to stream time_base (same)
 	av_packet_rescale_ts(pkt, AVRational{ 1, 30 }, _videoStream->time_base);
+	av_interleaved_write_frame(_fmt, pkt);
+	av_packet_free(&pkt);
+}
+
+void Packager::writeAudioPacket(const QByteArray &data, qint64 ptsMs) {
+	std::lock_guard<std::mutex> lock(_mutex);
+	if (!_fmt || !_headerWritten || _ended || !_audioStream) return;
+	AVPacket *pkt = av_packet_alloc();
+	if (!pkt) return;
+	pkt->data = (uint8_t*)data.data();
+	pkt->size = data.size();
+	pkt->stream_index = _audioStream->index;
+	pkt->pts = ptsMs * 48; // ms -> 48k samples
+	pkt->dts = pkt->pts;
+	av_packet_rescale_ts(pkt, AVRational{ 1, 48000 }, _audioStream->time_base);
 	av_interleaved_write_frame(_fmt, pkt);
 	av_packet_free(&pkt);
 }

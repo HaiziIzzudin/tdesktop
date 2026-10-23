@@ -78,8 +78,9 @@ void FeedEncoder::submitFrameData(const VideoFrameData &data) {
 }
 
 void FeedEncoder::submitAudioChunk(const QByteArray &data, qint64 ptsMs) {
-	(void)data;
-	(void)ptsMs;
+	if (_packager) {
+		_packager->writeAudioPacket(data, ptsMs);
+	}
 }
 
 void FeedEncoder::recordMissedDeadline() {

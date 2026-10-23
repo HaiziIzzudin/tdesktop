@@ -27,6 +27,8 @@ public:
 
 private:
 	ChunkCallback _callback;
+	void *_ctx = nullptr;
+	qint64 _pts = 0;
 };
 
 } // namespace CallStream
