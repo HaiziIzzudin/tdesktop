@@ -28,9 +28,21 @@ Packager::~Packager() {
 
 bool Packager::open() {
 	_playlist = _folder + u"/playlist.m3u8"_q;
+	bool useHls = true;
 	const std::string outPath = _playlist.toStdString();
 	if (avformat_alloc_output_context2(&_fmt, nullptr, "hls", outPath.c_str()) < 0 || !_fmt) {
-		return false;
+		useHls = false;
+		// Fallback: mpegts into stream.ts, and write playlist.m3u8 manually.
+		const QString tsPath = _folder + u"/stream.ts"_q;
+		if (avformat_alloc_output_context2(&_fmt, nullptr, "mpegts", tsPath.toStdString().c_str()) < 0 || !_fmt) {
+			return false;
+		}
+		// Write a minimal playlist referencing stream.ts.
+		QFile pl(_folder + u"/playlist.m3u8"_q);
+		if (pl.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+			pl.write("#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:10\n#EXT-X-MEDIA-SEQUENCE:0\n#EXTINF:10.0,\nstream.ts\n");
+			pl.close();
+		}
 	}
 	// hls options
 	av_opt_set(_fmt->priv_data, "hls_time", "2", 0);
@@ -92,6 +104,22 @@ void Packager::finish() {
 	_ended = true;
 	if (_headerWritten) {
 		av_write_trailer(_fmt);
+	}
+	// If fallback playlist exists, mark end.
+	QFile pl(_folder + u"/playlist.m3u8"_q);
+	if (pl.exists()) {
+		// Append ENDLIST if not present.
+		QString content;
+		if (pl.open(QIODevice::ReadOnly)) {
+			content = QString::fromUtf8(pl.readAll());
+			pl.close();
+		}
+		if (!content.contains(u"#EXT-X-ENDLIST"_q)) {
+			if (pl.open(QIODevice::Append)) {
+				pl.write("#EXT-X-ENDLIST\n");
+				pl.close();
+			}
+		}
 	}
 }
 

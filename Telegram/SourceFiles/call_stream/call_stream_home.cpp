@@ -529,7 +529,14 @@ LinkServiceResponse Home::serveFile(const QString &path) const {
 	if (folder.isEmpty()) {
 		return response;
 	}
-	QFile file(folder + u"/"_q + fileName);
+	QString actualFile = fileName;
+	QFile file(folder + u"/"_q + actualFile);
+	if (!file.exists()) {
+		// Fall back to whatever the packager wrote.
+		if (QFile::exists(folder + u"/playlist.m3u8"_q)) actualFile = u"playlist.m3u8"_q;
+		else if (QFile::exists(folder + u"/stream.ts"_q)) actualFile = u"stream.ts"_q;
+		file.setFileName(folder + u"/"_q + actualFile);
+	}
 	if (!file.open(QIODevice::ReadOnly)) {
 		return response;
 	}
