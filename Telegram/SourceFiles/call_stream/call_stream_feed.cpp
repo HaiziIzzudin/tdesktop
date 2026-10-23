@@ -1,0 +1,41 @@
+/*
+This file is part of Telegram Desktop,
+the official desktop application for the Telegram messaging service.
+*/
+
+#include "call_stream/call_stream_feed.h"
+
+namespace CallStream {
+
+StreamFeed::StreamFeed(int index, const QString &folder, const std::shared_ptr<AudioEncoder> &audio)
+: _index(index)
+, _encoder(folder)
+, _audio(audio) {
+}
+
+StreamFeed::~StreamFeed() = default;
+
+void StreamFeed::submitVideoFrame(const QImage &frame, const QSize &size) {
+	(void)size;
+	_encoder.submitFrame(frame);
+}
+
+void StreamFeed::submitFrameData(const VideoFrameData &data) {
+	_encoder.submitFrameData(data);
+}
+
+void StreamFeed::submitAudioChunk(const QByteArray &data, qint64 ptsMs) {
+	_encoder.submitAudioChunk(data, ptsMs);
+}
+
+void StreamFeed::submitAudioPiece(const AudioPiece &piece) {
+	if (_audio) {
+		_audio->submitPiece(piece);
+	}
+}
+
+void StreamFeed::finish() {
+	_encoder.finish();
+}
+
+} // namespace CallStream

@@ -434,6 +434,21 @@ PRIVATE
     boxes/url_auth_box.h
     boxes/username_box.cpp
     boxes/username_box.h
+    call_stream/call_stream_link_service.cpp
+    call_stream/call_stream_link_service.h
+    call_stream/call_stream_home.cpp
+    call_stream/call_stream_home.h
+    call_stream/call_stream_types.h
+    call_stream/call_stream_audio_encoder.cpp
+    call_stream/call_stream_audio_encoder.h
+    call_stream/call_stream_feed_encoder.cpp
+    call_stream/call_stream_feed_encoder.h
+    call_stream/call_stream_feed.cpp
+    call_stream/call_stream_feed.h
+    call_stream/call_stream_packager.cpp
+    call_stream/call_stream_packager.h
+    call_stream/call_stream_mixer.cpp
+    call_stream/call_stream_mixer.h
     calls/group/calls_choose_join_as.cpp
     calls/group/calls_choose_join_as.h
     calls/group/calls_cover_item.cpp
@@ -2063,6 +2078,8 @@ PRIVATE
     test/test_corner_patch.h
     test/test_custom_emoji.cpp
     test/test_custom_emoji.h
+    test/test_ffmpeg_muxers.cpp
+    test/test_ffmpeg_muxers.h
     test/test_gated_stage.cpp
     test/test_gated_stage.h
     test/test_gram_reconcile.cpp

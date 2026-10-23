@@ -11,6 +11,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "apiwrap.h"
 #include "base/timer.h"
 #include "calls/calls_call.h"
+#include "call_stream/call_stream_home.h"
 #include "calls/calls_instance.h"
 #include "calls/calls_video_bubble.h"
 #include "core/application.h"
@@ -388,6 +389,28 @@ void BuildOtherSection(SectionBuilder &builder) {
 	const auto api = &session->api();
 	const auto authorizations = &api->authorizations();
 	authorizations->reload();
+
+	const auto streaming = builder.addButton({
+		.id = u"calls/local-streaming"_q,
+		.title = tr::lng_settings_call_streaming(),
+		.st = &st::settingsButtonNoIcon,
+		.toggled = rpl::single(Core::App().settings().callStreamingEnabled()),
+		.keywords = { u"stream"_q, u"calls"_q, u"local"_q },
+	});
+
+	if (streaming) {
+		streaming->toggledValue(
+		) | rpl::filter([=](bool enabled) {
+			return (enabled != Core::App().settings().callStreamingEnabled());
+		}) | rpl::on_next([=](bool enabled) {
+			if (auto home = CallStream::Home::Instance()) {
+				home->setStreamingEnabled(enabled);
+			} else {
+				Core::App().settings().setCallStreamingEnabled(enabled);
+				Core::App().saveSettingsDelayed();
+			}
+		}, streaming->lifetime());
+	}
 
 	const auto acceptCalls = builder.addButton({
 		.id = u"calls/accept"_q,

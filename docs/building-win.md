@@ -11,6 +11,9 @@
 
 The build is done in **Visual Studio 2026** with **10.0.26100.0** SDK version.
 
+This checkout is built with Visual Studio 2022 instead; see
+[building-win-2022.md](building-win-2022.md) for the differences and two known pitfalls.
+
 Choose an empty folder for the future build, for example **D:\\TBuild**. It will be named ***BuildPath*** in the rest of this document. Create two folders there, ***BuildPath*\\ThirdParty** and ***BuildPath*\\Libraries**.
 
 The default modern toolset from Visual Studio 2026 (`v145`) does not support Windows 7, so for Telegram Desktop you must use `-vcvars_ver=14.44` (`v144.4`, based on `v143` with Windows 7 support).

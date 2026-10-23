@@ -43,6 +43,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "history/history.h"
 #include "apiwrap.h"
 #include "api/api_updates.h"
+#include "call_stream/call_stream_link_service.h"
+#include "call_stream/call_stream_home.h"
 #include "calls/calls_instance.h"
 #include "countries/countries_manager.h"
 #include "iv/iv_delegate_impl.h"
@@ -287,6 +289,8 @@ Application::~Application() {
 	_private->proxyRotation = nullptr;
 	_domain->finish();
 	MTP::WebProxy::Transport::Shutdown();
+	CallStream::LinkService::Shutdown();
+	CallStream::Home::Shutdown();
 
 	Local::finish();
 
@@ -314,6 +318,9 @@ void Application::run() {
 	_notifications = std::make_unique<Window::Notifications::System>();
 
 	startLocalStorage();
+
+	CallStream::LinkService::Start();
+	CallStream::Home::Start();
 
 	style::SetCustomFont(settings().customFontFamily());
 	style::internal::StartFonts();

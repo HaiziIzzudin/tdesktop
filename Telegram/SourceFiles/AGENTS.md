@@ -358,6 +358,10 @@ This atlas divides Telegram Desktop's sources into named areas, ordered from fou
 - Paths: `SourceFiles/calls/group/`, `SourceFiles/media/view/media_view_video_stream*`
 - Group calls, video chats, RTMP streams and conferences: the `GroupCall` model with participants, video, screen sharing and encryption, the panel, members and viewport, in-call messages and paid reactions, invite, join-as, settings and recording boxes, and the live stream inside the media viewer.
 
+### call stream — local call stream link service
+- Paths: `SourceFiles/call_stream/`
+- App-lifetime local loopback link service that exposes a joined call's media as a standard stream and plain-link REST service. Must not own call logic.
+
 ## Features: Instant View and wallet
 
 ### iv — Instant View windows

@@ -72,5 +72,8 @@ settings.local.json
 # AI work folder (session-specific, not for version control)
 .ai
 
+# Local specs and tickets (see docs/agents/issue-tracker.md)
+.scratch/
+
 # Generated changelog page (built by CI, deployed to GitHub Pages)
 /docs/changelog/

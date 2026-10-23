@@ -1311,7 +1311,9 @@ mac:
         --enable-demuxer=mp3 \
         --enable-demuxer=ogg \
         --enable-demuxer=wav \
+        --enable-muxer=hls \
         --enable-muxer=mp4 \
+        --enable-muxer=mpegts \
         --enable-muxer=ogg \
         --enable-muxer=opus \
         --enable-muxer=wav \

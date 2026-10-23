@@ -40,6 +40,9 @@ namespace Core {
 inline constexpr auto kScreenReaderModeDisabledKey
 	= "screen-reader-mode-disabled"_cs;
 
+inline constexpr auto kCallStreamingEnabledKey
+	= "call-streaming-enabled"_cs;
+
 struct WindowPosition {
 	int32 moncrc = 0;
 	int maximized = 0;
@@ -1048,6 +1051,16 @@ public:
 	void writePref(std::string_view key, Other &&value) {
 		writePrefImpl<Type>(key, std::forward<Other>(value));
 	}
+	[[nodiscard]] bool callStreamingEnabled() const {
+		if (const auto data = readPrefGeneric(kCallStreamingEnabledKey)) {
+			return !data->isEmpty();
+		}
+		return true;
+	}
+	void setCallStreamingEnabled(bool value) {
+		writePref<bool>(kCallStreamingEnabledKey, value);
+	}
+
 	void clearPref(std::string_view key);
 
 	template <typename Type, typename Other = Type>
@@ -1071,7 +1084,7 @@ private:
 
 	void writePrefGeneric(std::string_view key, const QByteArray &value);
 	[[nodiscard]] std::optional<QByteArray> readPrefGeneric(
-		std::string_view key);
+		std::string_view key) const;
 
 	static constexpr auto kDefaultThirdColumnWidth = 0;
 	static constexpr auto kDefaultDialogsWidthRatio = 5. / 14;

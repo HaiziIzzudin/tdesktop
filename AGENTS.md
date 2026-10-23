@@ -1003,3 +1003,17 @@ events | rpl::on_next([=](int value) {
 ```
 
 Keep per-subscription state in `lifetime.make_state<T>()`, behind a `shared_ptr`, or on the object that owns the subscription. A `mutable` lambda that is one-shot — `rpl::take(1)`, a self-destroying subscription, a `crl::on_main` or `crl::async` callback, a `done` or `error` callback — is not this trap.
+
+## Agent skills
+
+### Issue tracker
+
+Local markdown files under `.scratch/`: specs in `.scratch/prd/`, tickets in `.scratch/tickets/`, never GitHub issues. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Five canonical triage labels, used as-is. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context layout: one `GLOSSARY.md` and `docs/adr/` at the repo root. See `docs/agents/domain.md`.

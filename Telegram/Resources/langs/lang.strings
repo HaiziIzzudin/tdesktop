@@ -809,6 +809,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 "lng_settings_call_input_device" = "Input device";
 "lng_settings_call_output_device" = "Output device";
 "lng_settings_call_section_other" = "Other settings";
+"lng_settings_call_streaming" = "Local call streaming";
 "lng_settings_call_open_system_prefs" = "Open system sound preferences";
 "lng_settings_call_accept_calls" = "Accept calls on this device";
 "lng_settings_call_device_default" = "Default";
