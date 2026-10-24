@@ -146,11 +146,19 @@ void FeedEncoder::workerLoop() {
 				recordMissedDeadline();
 			}
 		} else if (!_finished && _codec) {
-			// Emit black frames when no source frames arrive.
-			auto now = std::chrono::steady_clock::now();
-			if (!_lastFrameTimeSet || now - _lastFrameTime > std::chrono::milliseconds(100)) {
-				VideoFrameData black;
-				encodeOne(black);
+			// Hold the last picture through short gaps, then go black.
+			const auto now = std::chrono::steady_clock::now();
+			if (!_lastFrameTimeSet
+				|| now - _lastFrameTime > std::chrono::milliseconds(500)) {
+				if (_hasLastSource
+					&& now - _lastSourceTime < std::chrono::seconds(3)) {
+					auto repeat = _lastSource;
+					repeat.timestampMs = 0;
+					encodeOne(repeat, false);
+				} else {
+					VideoFrameData black;
+					encodeOne(black, false);
+				}
 			}
 		}
 		if (_finished) {
@@ -215,7 +223,7 @@ void FeedEncoder::openEncoder(int width, int height) {
 	_height = height;
 }
 
-void FeedEncoder::encodeOne(const VideoFrameData &data) {
+void FeedEncoder::encodeOne(const VideoFrameData &data, bool fromSource) {
 	QSize srcSize;
 	bool black = false;
 	if (data.hasYuv420) {
@@ -271,6 +279,12 @@ void FeedEncoder::encodeOne(const VideoFrameData &data) {
 		return;
 	}
 	_lastPts = pts;
+
+	if (fromSource) {
+		_lastSource = data;
+		_lastSourceTime = std::chrono::steady_clock::now();
+		_hasLastSource = true;
+	}
 
 	if (av_frame_make_writable(frame) < 0) {
 		return;

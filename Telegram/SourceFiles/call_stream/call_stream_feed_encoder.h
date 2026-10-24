@@ -50,7 +50,7 @@ public:
 private:
 	void workerLoop();
 	void openEncoder(int width, int height);
-	void encodeOne(const VideoFrameData &data);
+	void encodeOne(const VideoFrameData &data, bool fromSource = true);
 	void closeEncoder();
 
 	QString _folder;
@@ -73,7 +73,10 @@ private:
 	int _width = 0;
 	int _height = 0;
 	std::chrono::steady_clock::time_point _lastFrameTime{};
+	std::chrono::steady_clock::time_point _lastSourceTime{};
+	VideoFrameData _lastSource;
 	bool _lastFrameTimeSet = false;
+	bool _hasLastSource = false;
 
 	std::atomic<int> _missedDeadlines{ 0 };
 	std::atomic<int> _maxHeight{ 1080 };
