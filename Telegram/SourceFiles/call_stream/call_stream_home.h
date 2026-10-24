@@ -18,6 +18,7 @@ the official desktop application for the Telegram messaging service.
 #include <memory>
 #include <vector>
 #include <chrono>
+#include <string>
 #include <QString>
 
 namespace Calls {
@@ -51,7 +52,7 @@ public:
 	void announceCallChanged(Calls::Call *call, Calls::GroupCall *groupCall);
 
 	[[nodiscard]] QString listing() const;
-	[[nodiscard]] const std::vector<Feed> &feeds() const { return _feeds; }
+	[[nodiscard]] std::vector<Feed> feeds() const;
 
 	void setStreamingEnabled(bool enabled);
 	[[nodiscard]] bool streamingEnabled() const { return _enabled; }
@@ -79,20 +80,38 @@ public:
 	}
 
 private:
+	struct Slot {
+		Feed feed;
+		std::unique_ptr<StreamFeed> instance;
+		rpl::lifetime lifetime;
+		QString folder;
+		std::string endpointId;
+		int maxHeight = 1080;
+		int missedCount = 0;
+		bool wired = false;
+		bool ended = false;
+	};
+
 	Home();
 	~Home() override;
 
 	void observe();
 	void rebuildFeeds();
 	void clearFeeds();
+	void dropSlots();
+	void startFeed(Slot &slot, int index);
+	void reviveFeed(Slot &slot, int index);
+	void endFeed(Slot &slot);
 	void wireVideoTracks();
 	void applyFeedMaxHeights();
+	void checkMaxHeightRecovery();
+
+	[[nodiscard]] int findSlot(const Feed &feed) const;
+	[[nodiscard]] bool sourceGone(const Feed &feed) const;
+	[[nodiscard]] bool isLive(const Slot &slot) const;
 
 	bool _enabled = true;
-	std::vector<Feed> _feeds;
-	std::vector<std::unique_ptr<StreamFeed>> _feedInstances;
-	std::vector<rpl::lifetime> _feedTrackLifetimes;
-	std::vector<bool> _feedWired;
+	std::vector<std::unique_ptr<Slot>> _slots;
 	std::shared_ptr<AudioEncoder> _audioEncoder;
 	std::unique_ptr<Mixer> _mixer;
 	Calls::Call *_call = nullptr;
@@ -102,14 +121,17 @@ private:
 	rpl::event_stream<> _listingChanged;
 
 	// Quality / pressure state.
+	int _nextFeedFolder = 0;
 	int _globalMaxHeight = 1080;
-	std::vector<int> _perFeedMaxHeight;
-	std::vector<int> _missedCounts;
 	std::chrono::steady_clock::time_point _lastShrinkTime{};
 	bool _lastShrinkSet = false;
+	std::chrono::steady_clock::time_point _lastMissTime{};
+	std::chrono::steady_clock::time_point _lastRecoveryTime{};
 	static constexpr int kShrinkIntervalMs = 3000;
 	static constexpr int kSingleThreshold = 2;
 	static constexpr int kAggregateThreshold = 2;
+	static constexpr int kRecoveryCheckMs = 2000;
+	static constexpr int kCalmBeforeRecoveryMs = 15000;
 
 	static Home *_instance;
 };

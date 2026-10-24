@@ -383,6 +383,13 @@ public:
 	void requestVideoQuality(
 		const VideoEndpoint &endpoint,
 		Group::VideoQuality quality);
+	// WHY: a consumer of one endpoint's picture outside the call window needs
+	// its tier to outlive tile requests and the participant-count budget.
+	void forceVideoQuality(
+		const VideoEndpoint &endpoint,
+		Group::VideoQuality quality);
+	void clearForcedVideoQuality(const VideoEndpoint &endpoint);
+	void clearForcedVideoQualities();
 
 	[[nodiscard]] bool videoEndpointPinned() const {
 		return _videoEndpointPinned.current();
@@ -776,6 +783,9 @@ private:
 	base::flat_map<
 		VideoEndpoint,
 		std::unique_ptr<VideoTrack>> _activeVideoTracks;
+	base::flat_map<
+		VideoEndpoint,
+		Group::VideoQuality> _forcedVideoQualities;
 	base::flat_set<VideoEndpoint> _shownVideoTracks;
 	rpl::variable<VideoEndpoint> _videoEndpointLarge;
 	rpl::variable<bool> _videoEndpointPinned = false;

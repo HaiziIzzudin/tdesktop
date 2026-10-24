@@ -5,6 +5,7 @@ the official desktop application for the Telegram messaging service.
 
 #include "call_stream/call_stream_feed_encoder.h"
 
+#include "base/debug_log.h"
 #include "ffmpeg/ffmpeg_utility.h"
 
 #include <crl/crl_time.h>
@@ -220,6 +221,7 @@ void FeedEncoder::openEncoder(int width, int height) {
 	}
 	_width = width;
 	_height = height;
+	DEBUG_LOG(("CallStream: feed picture %1x%2").arg(width).arg(height));
 }
 
 void FeedEncoder::encodeOne(const VideoFrameData &data, bool fromSource) {

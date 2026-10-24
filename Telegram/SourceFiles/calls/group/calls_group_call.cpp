@@ -1507,6 +1507,7 @@ void GroupCall::markEndpointActive(
 		markTrackShown(endpoint, false);
 		markTrackPaused(endpoint, false);
 		_activeVideoTracks.erase(i);
+		_forcedVideoQualities.remove(endpoint);
 	}
 	updateRequestedVideoChannelsDelayed();
 	_videoStreamActiveUpdates.fire({ endpoint, active });
@@ -3389,8 +3390,10 @@ void GroupCall::updateRequestedVideoChannels() {
 		return;
 	}
 	auto channels = std::vector<tgcalls::VideoChannelDescription>();
+	auto forced = std::vector<bool>();
 	using Quality = tgcalls::VideoChannelDescription::Quality;
 	channels.reserve(_activeVideoTracks.size());
+	forced.reserve(_activeVideoTracks.size());
 	const auto &camera = cameraSharingEndpoint();
 	const auto &screen = screenSharingEndpoint();
 	auto mediums = 0;
@@ -3400,14 +3403,19 @@ void GroupCall::updateRequestedVideoChannels() {
 		const auto &endpointId = endpoint.id;
 		if (endpointId == camera || endpointId == screen) {
 			continue;
-		} else if (endpointId == Data::RtmpEndpointId()) {
+		}
+		const auto forcedIt = _forcedVideoQualities.find(endpoint);
+		const auto isForced = (forcedIt != end(_forcedVideoQualities));
+		const auto quality = isForced ? forcedIt->second : video->quality;
+		if (endpointId == Data::RtmpEndpointId()) {
 			channels.push_back({
 				.endpointId = endpointId,
-				.minQuality = (video->quality == Group::VideoQuality::Full
+				.minQuality = (quality == Group::VideoQuality::Full
 					? Quality::Full
 					: Quality::Thumbnail),
 				.maxQuality = Quality::Full,
 			});
+			forced.push_back(isForced);
 			continue;
 		}
 		const auto participant = real->participantByEndpoint(endpointId);
@@ -3417,24 +3425,26 @@ void GroupCall::updateRequestedVideoChannels() {
 		if (!params) {
 			continue;
 		}
-		const auto min = (video->quality == Group::VideoQuality::Full
+		const auto min = (quality == Group::VideoQuality::Full
 			&& endpoint.type == VideoEndpointType::Screen)
 			? Quality::Full
 			: Quality::Thumbnail;
-		const auto max = (video->quality == Group::VideoQuality::Full)
+		const auto max = (quality == Group::VideoQuality::Full)
 			? Quality::Full
-			: (video->quality == Group::VideoQuality::Medium
+			: (quality == Group::VideoQuality::Medium
 				&& endpoint.type != VideoEndpointType::Screen)
 			? Quality::Medium
 			: Quality::Thumbnail;
-		if (max == Quality::Full) {
-			if (endpoint.type == VideoEndpointType::Screen) {
-				++fullscreencasts;
-			} else {
-				++fullcameras;
+		if (!isForced) {
+			if (max == Quality::Full) {
+				if (endpoint.type == VideoEndpointType::Screen) {
+					++fullscreencasts;
+				} else {
+					++fullcameras;
+				}
+			} else if (max == Quality::Medium) {
+				++mediums;
 			}
-		} else if (max == Quality::Medium) {
-			++mediums;
 		}
 		channels.push_back({
 			.audioSsrc = participant->ssrc,
@@ -3446,6 +3456,7 @@ void GroupCall::updateRequestedVideoChannels() {
 			.minQuality = min,
 			.maxQuality = max,
 		});
+		forced.push_back(isForced);
 	}
 
 	// We limit `count(Full) * kFullAsMediumsCount + count(medium)`.
@@ -3460,7 +3471,11 @@ void GroupCall::updateRequestedVideoChannels() {
 	const auto downgradeAll = (fullscreencasts * kFullAsMediumsCount)
 		> kMaxMediumQualities;
 	if (downgradeSome) {
-		for (auto &channel : channels) {
+		for (auto i = 0; i != int(channels.size()); ++i) {
+			if (forced[i]) {
+				continue;
+			}
+			auto &channel = channels[i];
 			if (channel.maxQuality == Quality::Full) {
 				const auto camera = (channel.minQuality != Quality::Full);
 				if (camera) {
@@ -3480,7 +3495,11 @@ void GroupCall::updateRequestedVideoChannels() {
 		}
 	}
 	if (mediums > kMaxMediumQualities) {
-		for (auto &channel : channels) {
+		for (auto i = 0; i != int(channels.size()); ++i) {
+			if (forced[i]) {
+				continue;
+			}
+			auto &channel = channels[i];
 			if (channel.maxQuality == Quality::Medium) {
 				channel.maxQuality = Quality::Thumbnail;
 			}
@@ -3988,10 +4007,44 @@ void GroupCall::requestVideoQuality(
 		return;
 	}
 	const auto i = _activeVideoTracks.find(endpoint);
-	if (i == end(_activeVideoTracks) || i->second->quality == quality) {
+	if (i == end(_activeVideoTracks)
+		|| i->second->quality == quality
+		|| _forcedVideoQualities.contains(endpoint)) {
 		return;
 	}
 	i->second->quality = quality;
+	updateRequestedVideoChannelsDelayed();
+}
+
+void GroupCall::forceVideoQuality(
+		const VideoEndpoint &endpoint,
+		Group::VideoQuality quality) {
+	if (!endpoint || !_activeVideoTracks.contains(endpoint)) {
+		return;
+	}
+	const auto i = _forcedVideoQualities.find(endpoint);
+	if (i != end(_forcedVideoQualities)) {
+		if (i->second == quality) {
+			return;
+		}
+		i->second = quality;
+	} else {
+		_forcedVideoQualities.emplace(endpoint, quality);
+	}
+	updateRequestedVideoChannelsDelayed();
+}
+
+void GroupCall::clearForcedVideoQuality(const VideoEndpoint &endpoint) {
+	if (_forcedVideoQualities.remove(endpoint)) {
+		updateRequestedVideoChannelsDelayed();
+	}
+}
+
+void GroupCall::clearForcedVideoQualities() {
+	if (_forcedVideoQualities.empty()) {
+		return;
+	}
+	_forcedVideoQualities.clear();
 	updateRequestedVideoChannelsDelayed();
 }
 
