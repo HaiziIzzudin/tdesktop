@@ -64,7 +64,7 @@ bool Packager::open() {
 		_audioStream->codecpar->codec_type = AVMEDIA_TYPE_AUDIO;
 		_audioStream->codecpar->codec_id = AV_CODEC_ID_AAC;
 		_audioStream->codecpar->sample_rate = 48000;
-		av_channel_layout_default(&_audioStream->codecpar->ch_layout, 2);
+		av_channel_layout_from_string(&_audioStream->codecpar->ch_layout, "stereo");
 		_audioStream->time_base = AVRational{ 1, 48000 };
 	}
 
