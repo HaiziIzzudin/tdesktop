@@ -120,6 +120,22 @@ void Packager::writeAudioPacket(const QByteArray &data, qint64 ptsMs) {
 	av_packet_rescale_ts(pkt, AVRational{ 1, 48000 }, _audioStream->time_base);
 	av_interleaved_write_frame(_fmt, pkt);
 	av_packet_free(&pkt);
+
+	// Ensure live playlist never carries ENDLIST (muxer may add it).
+	QFile pl(_folder + u"/playlist.m3u8"_q);
+	if (pl.exists()) {
+		QString content;
+		if (pl.open(QIODevice::ReadOnly)) {
+			content = QString::fromUtf8(pl.readAll());
+			pl.close();
+		}
+		content.remove(u"#EXT-X-ENDLIST\n"_q);
+		content.remove(u"#EXT-X-ENDLIST"_q);
+		if (pl.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+			pl.write(content.toUtf8());
+			pl.close();
+		}
+	}
 }
 
 void Packager::finish() {
@@ -129,21 +145,10 @@ void Packager::finish() {
 	if (_headerWritten) {
 		av_write_trailer(_fmt);
 	}
-	// If fallback playlist exists, mark end.
 	QFile pl(_folder + u"/playlist.m3u8"_q);
-	if (pl.exists()) {
-		// Append ENDLIST if not present.
-		QString content;
-		if (pl.open(QIODevice::ReadOnly)) {
-			content = QString::fromUtf8(pl.readAll());
-			pl.close();
-		}
-		if (!content.contains(u"#EXT-X-ENDLIST"_q)) {
-			if (pl.open(QIODevice::Append)) {
-				pl.write("#EXT-X-ENDLIST\n");
-				pl.close();
-			}
-		}
+	if (pl.open(QIODevice::Append)) {
+		pl.write("#EXT-X-ENDLIST\n");
+		pl.close();
 	}
 }
 
