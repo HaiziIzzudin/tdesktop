@@ -105,7 +105,6 @@ bool Packager::ensureOpen(qint64 videoTimestampMs) {
 			_openFailed = true;
 			return false;
 		}
-		_fallback = true;
 		QFile pl(_playlist);
 		if (pl.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
 			pl.write("#EXTM3U\n"
@@ -291,16 +290,24 @@ void Packager::finish() {
 		return;
 	}
 	_ended = true;
-	if (!_opened) {
+	if (_opened) {
+		av_write_trailer(_fmt);
+	}
+	// An open player needs the end marker to finish on its own.
+	if (_playlist.isEmpty()) {
 		return;
 	}
-	av_write_trailer(_fmt);
-	if (_fallback) {
-		QFile pl(_playlist);
-		if (pl.open(QIODevice::Append)) {
-			pl.write("#EXT-X-ENDLIST\n");
-			pl.close();
-		}
+	QFile pl(_playlist);
+	if (!pl.open(QIODevice::ReadOnly)) {
+		return;
+	}
+	const auto content = pl.readAll();
+	pl.close();
+	if (content.contains("#EXT-X-ENDLIST")) {
+		return;
+	} else if (pl.open(QIODevice::Append)) {
+		pl.write("#EXT-X-ENDLIST\n");
+		pl.close();
 	}
 }
 

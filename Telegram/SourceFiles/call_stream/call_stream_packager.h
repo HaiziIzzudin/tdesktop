@@ -65,7 +65,6 @@ private:
 	qint64 _lastAudioPts = -1;
 	bool _opened = false;
 	bool _openFailed = false;
-	bool _fallback = false;
 	bool _ended = false;
 	std::vector<PendingAudio> _pendingAudio;
 	std::mutex _mutex;
