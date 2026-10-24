@@ -192,10 +192,9 @@ void FeedEncoder::openEncoder(int width, int height) {
 	ctx->pix_fmt = AV_PIX_FMT_YUV420P;
 	ctx->gop_size = 60;
 	ctx->max_b_frames = 0;
-	// High profile, level <= 4.1
+	// High profile, level <= 4.1.
 	ctx->profile = AV_PROFILE_H264_HIGH;
 	ctx->level = 41;
-	ctx->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
 	av_opt_set(ctx->priv_data, "preset", "veryfast", 0);
 	av_opt_set(ctx->priv_data, "tune", "zerolatency", 0);
 	if (avcodec_open2(ctx, codec, nullptr) < 0) {
