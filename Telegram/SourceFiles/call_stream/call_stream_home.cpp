@@ -556,11 +556,14 @@ QString Home::listing() const {
 	if (!_enabled) return u"streaming is off"_q;
 	if (!_call && !_groupCall) return u"no call right now"_q;
 	if (_feeds.empty()) return u"no feeds right now"_q;
-	QStringList lines;
+		// JSON notation: list of { "username", "stream" }.
+	QStringList entries;
 	for (const auto &f : _feeds) {
-		lines << (f.name() + u" — "_q + f.link());
+		const auto name = f.name();
+		const auto link = f.link();
+		entries << (u"{\"username\":\""_q + name + u"\",\"stream\":\""_q + link + u"\"}"_q);
 	}
-	return lines.join(u"\n"_q);
+	return u"["_q + entries.join(u","_q) + u"]"_q;
 }
 
 QString Feed::name() const {
