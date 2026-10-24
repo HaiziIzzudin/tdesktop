@@ -142,6 +142,9 @@ void LinkService::handleConnection(QTcpSocket *socket) {
 				if (!resp.contentType.isEmpty()) {
 					contentType = resp.contentType;
 				}
+			} else if (path.lastIndexOf('.') > path.lastIndexOf('/')) {
+				send(404, "Not Found", QByteArray(), "text/plain; charset=utf-8");
+				return;
 			} else if (_provider) {
 				body = _provider().toUtf8();
 			}

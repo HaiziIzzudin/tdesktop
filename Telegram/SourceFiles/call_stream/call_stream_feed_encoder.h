@@ -29,7 +29,11 @@ public:
 
 	void submitFrame(const QImage &frame);
 	void submitFrameData(const VideoFrameData &data);
-	void submitAudioChunk(const QByteArray &data, qint64 ptsMs);
+	void submitAudioChunk(
+		const QByteArray &data,
+		qint64 ptsSamples,
+		qint64 durationSamples,
+		qint64 startTimestampMs);
 	void finish();
 
 	[[nodiscard]] const QString &folder() const { return _folder; }
@@ -51,7 +55,9 @@ private:
 
 	QString _folder;
 	Packager *_packager = nullptr;
-	qint64 _pts = 0;
+	qint64 _epochMs = 0;
+	qint64 _lastPts = -1;
+	bool _epochSet = false;
 	std::thread _thread;
 	std::mutex _mutex;
 	std::condition_variable _cv;
@@ -60,6 +66,10 @@ private:
 
 	void *_codec = nullptr; // AVCodecContext*
 	void *_frame = nullptr; // AVFrame*
+	void *_sws = nullptr; // SwsContext*
+	int _swsWidth = 0;
+	int _swsHeight = 0;
+	int _swsFormat = 0;
 	int _width = 0;
 	int _height = 0;
 	std::chrono::steady_clock::time_point _lastFrameTime{};

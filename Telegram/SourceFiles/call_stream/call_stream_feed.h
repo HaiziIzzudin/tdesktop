@@ -19,12 +19,20 @@ namespace CallStream {
 
 class StreamFeed {
 public:
-	StreamFeed(int index, const QString &folder, const std::shared_ptr<AudioEncoder> &audio);
+	StreamFeed(
+		int index,
+		const QString &folder,
+		const QString &slot,
+		const std::shared_ptr<AudioEncoder> &audio);
 	~StreamFeed();
 
 	void submitVideoFrame(const QImage &frame, const QSize &size);
 	void submitFrameData(const VideoFrameData &data);
-	void submitAudioChunk(const QByteArray &data, qint64 ptsMs);
+	void submitAudioChunk(
+		const QByteArray &data,
+		qint64 ptsSamples,
+		qint64 durationSamples,
+		qint64 startTimestampMs);
 	void submitAudioPiece(const AudioPiece &piece);
 	void finish();
 

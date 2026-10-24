@@ -147,6 +147,9 @@ void Home::announceCallChanged(Calls::Call *call, Calls::GroupCall *groupCall) {
 }
 
 void Home::clearFeeds() {
+	if (_audioEncoder) {
+		_audioEncoder->finish();
+	}
 	for (auto &f : _feedInstances) {
 		if (f) f->finish();
 	}
@@ -208,9 +211,19 @@ void Home::rebuildFeeds() {
 	// Ensure shared audio encoder/mixer exists if we have or will have feeds.
 	if (_audioEncoder == nullptr && (!_feeds.empty() || !desired.empty())) {
 		_audioEncoder = std::make_shared<AudioEncoder>();
-		_audioEncoder->setChunkCallback([this](const QByteArray &data, qint64 pts) {
+		_audioEncoder->setChunkCallback([this](
+				const QByteArray &data,
+				qint64 ptsSamples,
+				qint64 durationSamples,
+				qint64 startTimestampMs) {
 			for (auto &f : _feedInstances) {
-				if (f) f->submitAudioChunk(data, pts);
+				if (f) {
+					f->submitAudioChunk(
+						data,
+						ptsSamples,
+						durationSamples,
+						startTimestampMs);
+				}
 			}
 		});
 		_mixer = std::make_unique<Mixer>([this](const AudioPiece &piece) {
@@ -235,7 +248,11 @@ void Home::rebuildFeeds() {
 		if (_audioEncoder) {
 			const auto folder = tempRoot + u"/feed-"_q + QString::number(newIndex);
 			QDir().mkpath(folder);
-			auto instance = std::make_unique<StreamFeed>(newIndex, folder, _audioEncoder);
+			auto instance = std::make_unique<StreamFeed>(
+				newIndex,
+				folder,
+				d.slot,
+				_audioEncoder);
 			const int captured = newIndex;
 			instance->setOnMissedDeadline([this, captured]() {
 				crl::on_main(this, [this, captured]() {
@@ -357,6 +374,7 @@ void Home::wireVideoTracks() {
 				track->renderNextFrame() | rpl::on_next([this, track, idx]() {
 					auto info = track->frameWithInfo(false);
 					VideoFrameData frameData;
+					frameData.timestampMs = crl::now();
 					if (info.yuv420) {
 						frameData.hasYuv420 = true;
 						frameData.yuvSize = info.yuv420->size;
@@ -389,6 +407,7 @@ void Home::wireVideoTracks() {
 			track->renderNextFrame() | rpl::on_next([this, track, idx]() {
 				auto info = track->frameWithInfo(false);
 				VideoFrameData frameData;
+				frameData.timestampMs = crl::now();
 				if (info.yuv420) {
 					frameData.hasYuv420 = true;
 					frameData.yuvSize = info.yuv420->size;
@@ -502,53 +521,58 @@ int Home::missedDeadlineCount(int feedIndex) const {
 
 LinkServiceResponse Home::serveFile(const QString &path) const {
 	LinkServiceResponse response;
-	// Path like /<id>/<slot>.m3u8 or /<id>/<filename>.ts
+	// Path like /<id>/<slot>.m3u8 or /<id>/<slot>-seg<nnn>.ts.
 	const auto trimmed = path.startsWith('/') ? path.mid(1) : path;
 	const auto parts = trimmed.split('/');
 	if (parts.size() < 2) {
 		return response;
 	}
-	// Find feed by link prefix.
-	const auto feedKey = parts[0] + u"/"_q + parts[1].section('.', 0, 0);
-	QString folder;
+	const auto feedId = parts[0];
 	const auto fileName = parts.last();
-	for (size_t i = 0; i < _feeds.size(); ++i) {
-		if (_feeds[i].link().contains(parts[0]) && fileName.startsWith(_feeds[i].slot)) {
-			if (i < _feedInstances.size() && _feedInstances[i]) {
-				folder = _feedInstances[i]->folder();
-			}
-			break;
+	QString folder;
+	for (size_t i = 0; i != _feeds.size(); ++i) {
+		const auto &feed = _feeds[i];
+		if (!feed.peer || QString::number(feed.peer->id.value) != feedId) {
+			continue;
+		} else if (!fileName.startsWith(feed.slot)) {
+			continue;
 		}
+		if (i < _feedInstances.size() && _feedInstances[i]) {
+			folder = _feedInstances[i]->folder();
+		}
+		break;
 	}
-	if (folder.isEmpty()) {
-		// Fallback: use index 0 folder if only one feed.
-		if (!_feedInstances.empty() && _feedInstances[0]) {
-			folder = _feedInstances[0]->folder();
-		}
+	if (folder.isEmpty()
+		&& _feedInstances.size() == 1
+		&& _feedInstances[0]
+		&& fileName.endsWith(u".m3u8"_q)) {
+		folder = _feedInstances[0]->folder();
 	}
 	if (folder.isEmpty()) {
 		return response;
 	}
-	QString actualFile = fileName;
-	QFile file(folder + u"/"_q + actualFile);
-	if (!file.exists()) {
-		// Fall back to whatever the packager wrote.
-		if (QFile::exists(folder + u"/playlist.m3u8"_q)) actualFile = u"playlist.m3u8"_q;
-		else if (QFile::exists(folder + u"/stream.ts"_q)) actualFile = u"stream.ts"_q;
-		file.setFileName(folder + u"/"_q + actualFile);
+	auto actualName = fileName;
+	auto fullPath = folder + u"/"_q + actualName;
+	if (!QFile::exists(fullPath) && fileName.endsWith(u".m3u8"_q)) {
+		actualName = u"playlist.m3u8"_q;
+		fullPath = folder + u"/"_q + actualName;
 	}
+	QFile file(fullPath);
 	if (!file.open(QIODevice::ReadOnly)) {
 		return response;
 	}
 	response.body = file.readAll();
-	response.isFile = true;
-	if (fileName.endsWith(u".m3u8"_q)) {
-		response.contentType = "application/vnd.apple.mpegurl";
-	} else if (fileName.endsWith(u".ts"_q)) {
-		response.contentType = "video/MP2T";
-	} else {
-		response.contentType = "application/octet-stream";
+	if (response.body.isEmpty()) {
+		// The muxer may be in the middle of rewriting the playlist.
+		file.seek(0);
+		response.body = file.readAll();
 	}
+	response.isFile = true;
+	response.contentType = actualName.endsWith(u".m3u8"_q)
+		? "application/vnd.apple.mpegurl"
+		: actualName.endsWith(u".ts"_q)
+		? "video/MP2T"
+		: "application/octet-stream";
 	return response;
 }
 

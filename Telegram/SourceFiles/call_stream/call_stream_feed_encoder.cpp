@@ -7,7 +7,11 @@ the official desktop application for the Telegram messaging service.
 
 #include "ffmpeg/ffmpeg_utility.h"
 
+#include <crl/crl_time.h>
 #include <QtGui/QImage>
+
+#include <cmath>
+#include <cstring>
 
 extern "C" {
 #include <libavcodec/avcodec.h>
@@ -62,6 +66,7 @@ FeedEncoder::~FeedEncoder() {
 void FeedEncoder::submitFrame(const QImage &frame) {
 	VideoFrameData data;
 	data.image = frame;
+	data.timestampMs = crl::now();
 	{
 		std::lock_guard<std::mutex> lock(_mutex);
 		_queue.push(std::move(data));
@@ -77,9 +82,17 @@ void FeedEncoder::submitFrameData(const VideoFrameData &data) {
 	_cv.notify_one();
 }
 
-void FeedEncoder::submitAudioChunk(const QByteArray &data, qint64 ptsMs) {
+void FeedEncoder::submitAudioChunk(
+		const QByteArray &data,
+		qint64 ptsSamples,
+		qint64 durationSamples,
+		qint64 startTimestampMs) {
 	if (_packager) {
-		_packager->writeAudioPacket(data, ptsMs);
+		_packager->writeAudioPacket(
+			data,
+			ptsSamples,
+			durationSamples,
+			startTimestampMs);
 	}
 }
 
@@ -96,6 +109,9 @@ void FeedEncoder::finish() {
 		_finished = true;
 	}
 	_cv.notify_all();
+	if (_thread.joinable() && std::this_thread::get_id() != _thread.get_id()) {
+		_thread.join();
+	}
 }
 
 void FeedEncoder::workerLoop() {
@@ -171,12 +187,21 @@ void FeedEncoder::openEncoder(int width, int height) {
 	// High profile, level <= 4.1
 	ctx->profile = AV_PROFILE_H264_HIGH;
 	ctx->level = 41;
+	ctx->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
 	av_opt_set(ctx->priv_data, "preset", "veryfast", 0);
 	av_opt_set(ctx->priv_data, "tune", "zerolatency", 0);
 	if (avcodec_open2(ctx, codec, nullptr) < 0) {
 		avcodec_free_context(&ctx);
 		_codec = nullptr;
 		return;
+	}
+	if (_packager) {
+		_packager->setVideoParams(
+			width,
+			height,
+			QByteArray(
+				reinterpret_cast<const char*>(ctx->extradata),
+				ctx->extradata ? ctx->extradata_size : 0));
 	}
 	_frame = av_frame_alloc();
 	if (_frame) {
@@ -233,13 +258,32 @@ void FeedEncoder::encodeOne(const VideoFrameData &data) {
 	auto *frame = static_cast<AVFrame*>(_frame);
 	if (!frame) return;
 
-	SwsContext *sws = nullptr;
+	const auto timestampMs = (data.timestampMs > 0)
+		? data.timestampMs
+		: crl::now();
+	if (!_epochSet) {
+		_epochMs = timestampMs;
+		_epochSet = true;
+	}
+	const auto pts = qint64(std::llround(
+		(timestampMs - _epochMs) * 30.0 / 1000.0));
+	if (pts <= _lastPts) {
+		return;
+	}
+	_lastPts = pts;
+
+	if (av_frame_make_writable(frame) < 0) {
+		return;
+	}
+
 	AVFrame *srcFrame = av_frame_alloc();
+	if (!srcFrame) {
+		return;
+	}
 	if (data.hasYuv420) {
 		srcFrame->format = AV_PIX_FMT_YUV420P;
 		srcFrame->width = data.yuvSize.width();
 		srcFrame->height = data.yuvSize.height();
-		// Attach planes (const cast)
 		srcFrame->data[0] = const_cast<uint8_t*>(data.y.data());
 		srcFrame->data[1] = const_cast<uint8_t*>(data.u.data());
 		srcFrame->data[2] = const_cast<uint8_t*>(data.v.data());
@@ -247,8 +291,6 @@ void FeedEncoder::encodeOne(const VideoFrameData &data) {
 		srcFrame->linesize[1] = data.uStride;
 		srcFrame->linesize[2] = data.vStride;
 	} else {
-		srcFrame->format = AV_PIX_FMT_BGRA; // QImage::Format_ARGB32 is BGRA on little-endian? Use RGBA
-		// We'll treat image as ARGB32 (BGRA in memory on little endian)
 		srcFrame->format = AV_PIX_FMT_BGRA;
 		srcFrame->width = data.image.width();
 		srcFrame->height = data.image.height();
@@ -257,20 +299,40 @@ void FeedEncoder::encodeOne(const VideoFrameData &data) {
 	}
 
 	if (black) {
-		// Fill with black (YUV 0).
-		if (frame->data[0]) memset(frame->data[0], 0, (size_t)frame->linesize[0] * ctx->height);
-		if (frame->data[1]) memset(frame->data[1], 0, (size_t)frame->linesize[1] * (ctx->height / 2));
-		if (frame->data[2]) memset(frame->data[2], 0, (size_t)frame->linesize[2] * (ctx->height / 2));
-	} else {
-		sws = sws_getContext(
-			srcFrame->width, srcFrame->height, (AVPixelFormat)srcFrame->format,
-			ctx->width, ctx->height, ctx->pix_fmt,
-			SWS_BILINEAR, nullptr, nullptr, nullptr);
-		if (sws) {
-			sws_scale(sws, srcFrame->data, srcFrame->linesize, 0, srcFrame->height,
-				frame->data, frame->linesize);
+		if (frame->data[0]) {
+			memset(frame->data[0], 16, (size_t)frame->linesize[0] * ctx->height);
 		}
-		sws_freeContext(sws);
+		if (frame->data[1]) {
+			memset(frame->data[1], 128, (size_t)frame->linesize[1] * (ctx->height / 2));
+		}
+		if (frame->data[2]) {
+			memset(frame->data[2], 128, (size_t)frame->linesize[2] * (ctx->height / 2));
+		}
+	} else {
+		if (!_sws
+			|| _swsWidth != srcFrame->width
+			|| _swsHeight != srcFrame->height
+			|| _swsFormat != srcFrame->format) {
+			sws_freeContext(static_cast<SwsContext*>(_sws));
+			_sws = sws_getContext(
+				srcFrame->width, srcFrame->height,
+				(AVPixelFormat)srcFrame->format,
+				ctx->width, ctx->height, ctx->pix_fmt,
+				SWS_BILINEAR, nullptr, nullptr, nullptr);
+			_swsWidth = srcFrame->width;
+			_swsHeight = srcFrame->height;
+			_swsFormat = srcFrame->format;
+		}
+		if (auto sws = static_cast<SwsContext*>(_sws)) {
+			sws_scale(
+				sws,
+				srcFrame->data,
+				srcFrame->linesize,
+				0,
+				srcFrame->height,
+				frame->data,
+				frame->linesize);
+		}
 	}
 
 	// If srcFrame planes were attached, detach to avoid free
@@ -281,7 +343,7 @@ void FeedEncoder::encodeOne(const VideoFrameData &data) {
 	}
 	av_frame_free(&srcFrame);
 
-	frame->pts = _pts;
+	frame->pts = pts;
 
 	AVPacket *pkt = av_packet_alloc();
 	int ret = avcodec_send_frame(ctx, frame);
@@ -290,11 +352,15 @@ void FeedEncoder::encodeOne(const VideoFrameData &data) {
 			ret = avcodec_receive_packet(ctx, pkt);
 			if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) break;
 			if (ret < 0) break;
-			pkt->pts = _pts;
-			pkt->dts = _pts;
-			_pts++;
+			pkt->pts = pts;
+			pkt->dts = pts;
 			if (_packager) {
-				_packager->writeVideoPacket(QByteArray((const char*)pkt->data, pkt->size), pkt->pts, (pkt->flags & AV_PKT_FLAG_KEY) != 0);
+				_packager->writeVideoPacket(
+					QByteArray(
+						reinterpret_cast<const char*>(pkt->data),
+						pkt->size),
+					timestampMs,
+					(pkt->flags & AV_PKT_FLAG_KEY) != 0);
 			}
 			av_packet_unref(pkt);
 		}
@@ -316,6 +382,13 @@ void FeedEncoder::closeEncoder() {
 		av_frame_free(&f);
 		_frame = nullptr;
 	}
+	if (_sws) {
+		sws_freeContext(static_cast<SwsContext*>(_sws));
+		_sws = nullptr;
+	}
+	_swsWidth = 0;
+	_swsHeight = 0;
+	_swsFormat = 0;
 }
 
 } // namespace CallStream

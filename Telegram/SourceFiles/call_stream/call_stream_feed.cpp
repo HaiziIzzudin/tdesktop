@@ -7,17 +7,23 @@ the official desktop application for the Telegram messaging service.
 
 namespace CallStream {
 
-StreamFeed::StreamFeed(int index, const QString &folder, const std::shared_ptr<AudioEncoder> &audio)
+StreamFeed::StreamFeed(
+	int index,
+	const QString &folder,
+	const QString &slot,
+	const std::shared_ptr<AudioEncoder> &audio)
 : _index(index)
-, _packager(folder)
+, _packager(folder, slot)
 , _encoder(folder, &_packager)
 , _audio(audio) {
+	if (_audio) {
+		_packager.setAudioParams(_audio->params());
+	}
 }
 
 StreamFeed::~StreamFeed() = default;
 
-void StreamFeed::submitVideoFrame(const QImage &frame, const QSize &size) {
-	(void)size;
+void StreamFeed::submitVideoFrame(const QImage &frame, const QSize &) {
 	_encoder.submitFrame(frame);
 }
 
@@ -25,8 +31,16 @@ void StreamFeed::submitFrameData(const VideoFrameData &data) {
 	_encoder.submitFrameData(data);
 }
 
-void StreamFeed::submitAudioChunk(const QByteArray &data, qint64 ptsMs) {
-	_encoder.submitAudioChunk(data, ptsMs);
+void StreamFeed::submitAudioChunk(
+		const QByteArray &data,
+		qint64 ptsSamples,
+		qint64 durationSamples,
+		qint64 startTimestampMs) {
+	_encoder.submitAudioChunk(
+		data,
+		ptsSamples,
+		durationSamples,
+		startTimestampMs);
 }
 
 void StreamFeed::submitAudioPiece(const AudioPiece &piece) {

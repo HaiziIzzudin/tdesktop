@@ -21,8 +21,15 @@ struct AudioPiece {
 	int channels = 2;
 };
 
+struct AudioParams {
+	int sampleRate = 0;
+	int channels = 0;
+	QByteArray extradata;
+};
+
 struct VideoFrameData {
 	QImage image;
+	qint64 timestampMs = 0;
 	bool hasYuv420 = false;
 	QSize yuvSize;
 	QSize chromaSize;
