@@ -25,6 +25,8 @@ public:
 
 private:
 	void tryMix();
+	void mixMic(AudioPiece &out, const AudioPiece &mic);
+	void trimQueue(std::vector<AudioPiece> &queue);
 
 	SubmitCallback _submit;
 	std::vector<AudioPiece> _remoteQueue;

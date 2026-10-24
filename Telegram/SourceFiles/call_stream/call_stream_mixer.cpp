@@ -11,67 +11,106 @@ the official desktop application for the Telegram messaging service.
 
 namespace CallStream {
 
-Mixer::Mixer(SubmitCallback submit) : _submit(std::move(submit)) {
-}
+namespace {
 
-void Mixer::pushRemote(const std::vector<int16_t> &samples, int sampleRate, int channels, qint64 timestampMs) {
+constexpr auto kMaxQueuedPieces = size_t(200);
+
+AudioPiece ToPiece(
+		const std::vector<int16_t> &samples,
+		int sampleRate,
+		int channels,
+		qint64 timestampMs) {
 	AudioPiece piece;
 	piece.sampleRate = sampleRate;
 	piece.channels = channels;
 	piece.timestampMs = timestampMs;
 	piece.samples.resize(samples.size() * sizeof(int16_t));
 	std::memcpy(piece.samples.data(), samples.data(), piece.samples.size());
-	_remoteQueue.push_back(std::move(piece));
+	return piece;
+}
+
+} // namespace
+
+Mixer::Mixer(SubmitCallback submit) : _submit(std::move(submit)) {
+}
+
+void Mixer::pushRemote(
+		const std::vector<int16_t> &samples,
+		int sampleRate,
+		int channels,
+		qint64 timestampMs) {
+	_remoteQueue.push_back(ToPiece(
+		samples,
+		sampleRate,
+		channels,
+		timestampMs));
+	trimQueue(_remoteQueue);
 	tryMix();
 }
 
-void Mixer::pushMic(const std::vector<int16_t> &samples, int sampleRate, int channels) {
-	AudioPiece piece;
-	piece.sampleRate = sampleRate;
-	piece.channels = channels;
-	piece.timestampMs = crl::now();
-	piece.samples.resize(samples.size() * sizeof(int16_t));
-	std::memcpy(piece.samples.data(), samples.data(), piece.samples.size());
-	_micQueue.push_back(std::move(piece));
+void Mixer::pushMic(
+		const std::vector<int16_t> &samples,
+		int sampleRate,
+		int channels) {
+	_micQueue.push_back(ToPiece(
+		samples,
+		sampleRate,
+		channels,
+		crl::now()));
+	trimQueue(_micQueue);
 	tryMix();
+}
+
+void Mixer::trimQueue(std::vector<AudioPiece> &queue) {
+	while (queue.size() > kMaxQueuedPieces) {
+		queue.erase(queue.begin());
+	}
+}
+
+void Mixer::mixMic(AudioPiece &out, const AudioPiece &mic) {
+	const auto frames = int(
+		out.samples.size() / (out.channels * sizeof(int16_t)));
+	const auto micFrames = int(
+		mic.samples.size() / (mic.channels * sizeof(int16_t)));
+	auto mixed = reinterpret_cast<int16_t*>(out.samples.data());
+	const auto micSamples = reinterpret_cast<const int16_t*>(
+		mic.samples.constData());
+	for (auto i = 0; i != frames; ++i) {
+		auto micSample = int16_t(0);
+		if (i < micFrames) {
+			micSample = (mic.channels == 1)
+				? micSamples[i]
+				: micSamples[i * mic.channels];
+		}
+		for (auto c = 0; c != out.channels; ++c) {
+			const auto index = i * out.channels + c;
+			auto value = int(mixed[index]) + micSample;
+			if (value > 32767) {
+				value = 32767;
+			} else if (value < -32768) {
+				value = -32768;
+			}
+			mixed[index] = static_cast<int16_t>(value);
+		}
+	}
 }
 
 void Mixer::tryMix() {
-	while (!_remoteQueue.empty() && !_micQueue.empty()) {
-		auto remote = _remoteQueue.front();
-		_remoteQueue.erase(_remoteQueue.begin());
-		auto mic = _micQueue.front();
-		_micQueue.erase(_micQueue.begin());
-
-		// Upmix mic to stereo if needed and add to remote.
-		const int frames = remote.samples.size() / (remote.channels * sizeof(int16_t));
-		QByteArray mixed = remote.samples;
-		auto *mixedPtr = reinterpret_cast<int16_t *>(mixed.data());
-		const auto *micPtr = reinterpret_cast<const int16_t *>(mic.samples.data());
-
-		for (int i = 0; i < frames; ++i) {
-			int16_t micSample = 0;
-			if (i < static_cast<int>(mic.samples.size() / (mic.channels * sizeof(int16_t)))) {
-				if (mic.channels == 1) {
-					micSample = micPtr[i];
-				} else if (mic.channels >= 2) {
-					micSample = micPtr[i * mic.channels];
-				}
+	// Either side may be missing (muted call, no capture device).
+	while (!_remoteQueue.empty() || !_micQueue.empty()) {
+		auto out = AudioPiece();
+		if (!_remoteQueue.empty()) {
+			out = std::move(_remoteQueue.front());
+			_remoteQueue.erase(_remoteQueue.begin());
+			if (!_micQueue.empty()) {
+				auto mic = std::move(_micQueue.front());
+				_micQueue.erase(_micQueue.begin());
+				mixMic(out, mic);
 			}
-			for (int c = 0; c < remote.channels; ++c) {
-				int idx = i * remote.channels + c;
-				int v = mixedPtr[idx] + micSample;
-				if (v > 32767) v = 32767;
-				if (v < -32768) v = -32768;
-				mixedPtr[idx] = static_cast<int16_t>(v);
-			}
+		} else {
+			out = std::move(_micQueue.front());
+			_micQueue.erase(_micQueue.begin());
 		}
-
-		AudioPiece out;
-		out.samples = mixed;
-		out.timestampMs = remote.timestampMs;
-		out.sampleRate = remote.sampleRate;
-		out.channels = remote.channels;
 		if (_submit) {
 			_submit(out);
 		}
